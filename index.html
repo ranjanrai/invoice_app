@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login — Invoice App</title>
+  <style>
+    :root{--bg:#f3f4f6;--accent:#0b5ed7;--muted:#6b7280}
+    body{margin:0;background:var(--bg);font-family:Arial,Helvetica,sans-serif;color:#111;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .card{width:100%;max-width:420px;background:#fff;padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+    h2{margin:0 0 12px;font-size:20px}
+    label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin-top:6px;font-size:14px;box-sizing:border-box}
+    .actions{display:flex;gap:8px;margin-top:16px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:14px}
+    .secondary{background:#fff;color:var(--accent);border:1px solid #dde6f8}
+    .small{font-size:13px;padding:8px 10px}
+    .note{font-size:12px;color:#666;margin-top:12px}
+    .error{color:#b00020;font-size:13px;margin-top:8px}
+    .row {display:flex; gap:8px; align-items:center;}
+    .muted-btn {background:#fff;color:#333;border:1px solid #e5e7eb}
+  </style>
+</head>
+<body>
+  <div class="card" role="main" aria-labelledby="loginTitle">
+    <h2 id="loginTitle">Sign in to Invoice App</h2>
+
+    <label for="username">Username</label>
+    <input id="username" autocomplete="username" placeholder="username" />
+
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="password" />
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+      <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px">
+        <input id="remember" type="checkbox" /> Remember
+      </label>
+      <div>
+        <button id="openDbBtn" class="secondary small">Open DB File</button>
+        <button id="forgot" class="secondary small">Reset to default</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="loginBtn">Sign In</button>
+      <button id="guestBtn" class="secondary">Continue as Guest</button>
+    </div>
+
+    <div class="note">
+      Default (first-time) credentials: <strong>admin / admin123</strong>. You (or the invoice Settings) may change these later.
+    </div>
+
+    <div id="error" class="error" aria-live="polite" hidden></div>
+  </div>
+
+  <!-- hidden fallback file input -->
+  <input id="loginFileInput" type="file" accept="application/json" style="display:none" />
+
+  <!-- Dexie (same DB name used by invoice app) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.4/dexie.min.js"></script>
+  <script>
+    (async function(){
+      // ---------- Dexie setup ----------
+      const db = new Dexie('InvoiceDB');
+      db.version(1).stores({ products:'id,name,size,rate,description', settings:'key', invoices:'++id,invoiceNumber,createdAt' });
+      try { db.version(2).stores({ customers:'id,name' }); } catch(e){}
+      // ensure users store exists if DB upgraded previously — we attempt to create version 3 users store, but this may throw if version sequence mismatches, so we guard
+      try { db.version(3).stores({ users: '++id,username' }); } catch(e){ /* ok */ }
+
+      // ---------- utilities ----------
+      async function sha256hex(text){
+        const enc = new TextEncoder();
+        const data = enc.encode(text);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+      }
+
+      function showError(msg){
+        errorEl.hidden = false;
+        errorEl.textContent = msg;
+      }
+      function clearError(){
+        errorEl.hidden = true;
+        errorEl.textContent = '';
+      }
+
+      // ---------- ensure default auth / migrate to users if needed ----------
+      const authKey = 'auth';
+      async function ensureAuthSeedAndMigrate(){
+        // if users store exists, seed from legacy settings.auth if users empty
+        if(db.users){
+          try{
+            const cnt = await db.users.count().catch(()=>0);
+            if(!cnt){
+              // attempt to migrate legacy settings.auth
+              const authRec = await db.settings.get(authKey).catch(()=>null);
+              if(authRec && authRec.value && (authRec.value.username)){
+                const legacy = authRec.value;
+                // if legacy has plain password -> store hashed copy in users; if it only has passwordHash, use that
+                const newUser = { username: legacy.username, createdAt: new Date().toISOString() };
+                if(legacy.passwordHash){
+                  newUser.passwordHash = legacy.passwordHash;
+                } else if(legacy.password){
+                  newUser.passwordHash = await sha256hex(legacy.password);
+                } else {
+                  // no password info — skip
+                }
+                if(newUser.passwordHash){
+                  await db.users.add(newUser).catch(()=>{});
+                } else {
+                  // create admin with default password if nothing found
+                  const hashed = await sha256hex('admin123');
+                  await db.users.add({ username:'admin', passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+                }
+              } else {
+                // no legacy auth — create default admin
+                const hashed = await sha256hex('admin123');
+                await db.users.add({ username:'admin', passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+              }
+            }
+          }catch(e){
+            console.warn('users migration failed', e);
+          }
+        } else {
+          // users store not available — ensure legacy auth exists
+          let auth = await db.settings.get(authKey).catch(()=>null);
+          if(!auth || !auth.value){
+            await db.settings.put({ key: authKey, value: { username:'admin', password:'admin123' } });
+          }
+        }
+      }
+
+      // run seed/migration
+      await ensureAuthSeedAndMigrate();
+
+      // ---------- elements ----------
+      const usernameEl = document.getElementById('username');
+      const passwordEl = document.getElementById('password');
+      const rememberEl = document.getElementById('remember');
+      const errorEl = document.getElementById('error');
+      const loginBtn = document.getElementById('loginBtn');
+      const guestBtn = document.getElementById('guestBtn');
+      const forgotBtn = document.getElementById('forgot');
+      const openDbBtn = document.getElementById('openDbBtn');
+      const loginFileInput = document.getElementById('loginFileInput');
+
+      // If session exists, go to invoice automatically
+      try {
+        const sess = localStorage.getItem('loggedInUser') || sessionStorage.getItem('loggedInUser');
+        if(sess){
+          window.location.href = 'invoice.html';
+          return;
+        }
+      } catch(e){ /* ignore */ }
+
+      // ---------- login logic (prefer db.users, fallback to settings.auth) ----------
+      async function verifyAgainstUsersStore(username, passwordPlain){
+        if(!db.users) return { ok:false };
+        const rec = await db.users.where('username').equals(username).first();
+        if(!rec) return { ok:false };
+        // if record has passwordHash, verify; if it has plain password (legacy import shape), verify and upgrade
+        if(rec.passwordHash){
+          const providedHash = await sha256hex(passwordPlain);
+          if(providedHash === rec.passwordHash) return { ok:true, user:rec.username };
+          return { ok:false };
+        } else if(rec.password){
+          // legacy stored plain password in a users record (unlikely) — compare and upgrade to hash
+          if(passwordPlain === rec.password){
+            const newHash = await sha256hex(passwordPlain);
+            await db.users.update(rec.id, { passwordHash: newHash }).catch(()=>{});
+            return { ok:true, user: rec.username };
+          }
+          return { ok:false };
+        } else {
+          return { ok:false };
+        }
+      }
+
+      async function verifyAgainstLegacySettings(username, passwordPlain){
+        const authRec = await db.settings.get(authKey);
+        const stored = authRec && authRec.value ? authRec.value : { username:'admin', password:'admin123' };
+        try {
+          const providedHash = await sha256hex(passwordPlain);
+          const storedHash = stored.passwordHash || (stored.password ? await sha256hex(stored.password) : null);
+          if(username === stored.username && storedHash && providedHash === storedHash){
+            return { ok:true, username: stored.username, upgraded:false, legacy:true };
+          }
+          // fallback plaintext compare for compatibility and upgrade-on-success
+          if(username === stored.username && stored.password && passwordPlain === stored.password){
+            // upgrade stored to hashed form
+            const newHash = await sha256hex(stored.password);
+            await db.settings.put({ key: authKey, value: { username: stored.username, passwordHash: newHash } });
+            return { ok:true, username: stored.username, upgraded:true, legacy:true };
+          }
+        } catch(e) {
+          console.error('legacy verify err', e);
+        }
+        return { ok:false };
+      }
+
+      loginBtn.addEventListener('click', async function(){
+        clearError();
+        const u = (usernameEl.value || '').trim();
+        const p = passwordEl.value || '';
+        if(!u || !p) return showError('Enter username and password.');
+
+        try {
+          // Try users store first (preferred)
+          let res = { ok:false };
+          if(db.users){
+            res = await verifyAgainstUsersStore(u, p);
+            if(res.ok){
+              // success
+              if(rememberEl.checked) localStorage.setItem('loggedInUser', u);
+              else sessionStorage.setItem('loggedInUser', u);
+              await db.settings.put({ key:'session', value: { user: u, createdAt: new Date().toISOString() } });
+              window.location.href = 'invoice.html';
+              return;
+            }
+          }
+
+          // If users store failed or not present, try legacy settings record
+          const legacyRes = await verifyAgainstLegacySettings(u, p);
+          if(legacyRes.ok){
+            // If users store exists, migrate this user into users store too (so future auth uses users)
+            if(db.users){
+              const existing = await db.users.where('username').equals(u).first().catch(()=>null);
+              if(!existing){
+                const hashed = await sha256hex(p);
+                await db.users.add({ username: u, passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+              }
+            }
+
+            if(rememberEl.checked) localStorage.setItem('loggedInUser', u);
+            else sessionStorage.setItem('loggedInUser', u);
+            await db.settings.put({ key:'session', value: { user: u, createdAt: new Date().toISOString() } });
+            window.location.href = 'invoice.html';
+            return;
+          }
+
+          showError('Invalid username or password.');
+        } catch(err){
+          console.error('login error', err);
+          showError('Login failed (check console)');
+        }
+      });
+
+      // ---------- guest ----------
+      guestBtn.addEventListener('click', async function(){
+        const guest = 'guest';
+        sessionStorage.setItem('loggedInUser', guest);
+        await db.settings.put({ key:'session', value: { user: guest, createdAt: new Date().toISOString() } });
+        window.location.href = 'invoice.html';
+      });
+
+      // ---------- reset to defaults ----------
+      forgotBtn.addEventListener('click', async function(){
+        if(!confirm('Reset credentials to default admin/admin123?')) return;
+        // reset both legacy settings and users store (if present)
+        try{
+          await db.settings.put({ key: authKey, value: { username:'admin', password:'admin123' } });
+          if(db.users){
+            await db.users.clear();
+            const hashed = await sha256hex('admin123');
+            await db.users.add({ username:'admin', passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+          }
+          clearError();
+          showError('Credentials reset to admin / admin123');
+        }catch(e){
+          console.error('reset failed', e);
+          showError('Reset failed');
+        }
+      });
+
+      // ---------- open DB file (File System Access API preferred, fallback to file input) ----------
+      async function handleImportedDbObject(obj){
+        if(!obj || typeof obj !== 'object') return showError('Invalid file format.');
+
+        // 1) If exported snapshot contains users array, import into db.users
+        if(Array.isArray(obj.users) && db.users){
+          for(const u of obj.users){
+            if(!u.username) continue;
+            const rec = { username: u.username, createdAt: u.createdAt || new Date().toISOString() };
+            if(u.passwordHash) rec.passwordHash = u.passwordHash;
+            else if(u.password) rec.passwordHash = await sha256hex(String(u.password));
+            // avoid duplicate usernames
+            const existing = await db.users.where('username').equals(rec.username).first().catch(()=>null);
+            if(existing){
+              if(rec.passwordHash) await db.users.update(existing.id, { passwordHash: rec.passwordHash }).catch(()=>{});
+            } else {
+              await db.users.add(rec).catch(()=>{});
+            }
+          }
+          await db.users.toArray().catch(()=>{}); // ensure persistence
+        }
+
+        // 2) Import legacy settings auth if present (supports array-of-kv or object map)
+        if(Array.isArray(obj.settings)){
+          const authEntry = obj.settings.find(s => s && s.key === authKey);
+          if(authEntry && authEntry.value){
+            await db.settings.put({ key: authKey, value: authEntry.value });
+          }
+        } else if(obj.settings && typeof obj.settings === 'object' && obj.settings.auth){
+          await db.settings.put({ key: authKey, value: obj.settings.auth });
+        } else if(obj.auth && typeof obj.auth === 'object'){
+          await db.settings.put({ key: authKey, value: obj.auth });
+        }
+
+        // 3) If top-level users object exists as map (compat)
+        if(obj.users && !Array.isArray(obj.users) && typeof obj.users === 'object' && db.users){
+          // object map like { "admin": { passwordHash: "..."} }
+          for(const k of Object.keys(obj.users)){
+            const item = obj.users[k];
+            const rec = { username: k, createdAt: item.createdAt || new Date().toISOString() };
+            if(item.passwordHash) rec.passwordHash = item.passwordHash;
+            else if(item.password) rec.passwordHash = await sha256hex(String(item.password));
+            const existing = await db.users.where('username').equals(rec.username).first().catch(()=>null);
+            if(existing){
+              if(rec.passwordHash) await db.users.update(existing.id, { passwordHash: rec.passwordHash }).catch(()=>{});
+            } else {
+              await db.users.add(rec).catch(()=>{});
+            }
+          }
+        }
+
+        clearError();
+        alert('Imported DB file — auth/users records loaded into local DB. You can now login with those credentials.');
+      }
+
+      openDbBtn.addEventListener('click', async function(){
+        clearError();
+        // prefer File System Access API
+        if(window.showOpenFilePicker){
+          try {
+            const [handle] = await window.showOpenFilePicker({
+              multiple: false,
+              types: [{ description: 'JSON', accept: { 'application/json': ['.json'] } }],
+              excludeAcceptAllOption: false
+            });
+            const file = await handle.getFile();
+            const text = await file.text();
+            const obj = JSON.parse(text);
+            await handleImportedDbObject(obj);
+            return;
+          } catch(err){
+            // user canceled or permission denied -> fallback to input
+            if(err && (err.name === 'AbortError')) return;
+            console.warn('showOpenFilePicker failed, falling back to input', err);
+          }
+        }
+        // fallback: file input
+        loginFileInput.click();
+      });
+
+      loginFileInput.addEventListener('change', async (e) => {
+        const f = e.target.files && e.target.files[0];
+        if(!f) return;
+        try {
+          const text = await f.text();
+          const obj = JSON.parse(text);
+          await handleImportedDbObject(obj);
+        } catch(err){
+          console.error('File import error', err);
+          showError('Failed to parse file.');
+        } finally {
+          loginFileInput.value = '';
+        }
+      });
+
+      // convenience: Enter key to submit
+      [usernameEl,passwordEl].forEach(el => el.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') loginBtn.click(); }));
+    })();
+  </script>
+</body>
+</html>
