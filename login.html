@@ -148,7 +148,7 @@
       try {
         const sess = localStorage.getItem('loggedInUser') || sessionStorage.getItem('loggedInUser');
         if(sess){
-          window.location.href = 'invoice.html';
+          window.location.href = 'Invoice.html';
           return;
         }
       } catch(e){ /* ignore */ }
@@ -214,7 +214,7 @@
               if(rememberEl.checked) localStorage.setItem('loggedInUser', u);
               else sessionStorage.setItem('loggedInUser', u);
               await db.settings.put({ key:'session', value: { user: u, createdAt: new Date().toISOString() } });
-              window.location.href = 'invoice.html';
+              window.location.href = 'Invoice.html';
               return;
             }
           }
@@ -234,7 +234,7 @@
             if(rememberEl.checked) localStorage.setItem('loggedInUser', u);
             else sessionStorage.setItem('loggedInUser', u);
             await db.settings.put({ key:'session', value: { user: u, createdAt: new Date().toISOString() } });
-            window.location.href = 'invoice.html';
+            window.location.href = 'Invoice.html';
             return;
           }
 
@@ -250,7 +250,7 @@
         const guest = 'guest';
         sessionStorage.setItem('loggedInUser', guest);
         await db.settings.put({ key:'session', value: { user: guest, createdAt: new Date().toISOString() } });
-        window.location.href = 'invoice.html';
+        window.location.href = 'Invoice.html';
       });
 
       // ---------- reset to defaults ----------
@@ -373,3 +373,4 @@
   </script>
 </body>
 </html>
+
