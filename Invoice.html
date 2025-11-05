@@ -14,14 +14,14 @@
         // not logged in -> redirect to login
         const current = window.location.pathname.split('/').pop() || 'Invoice.html';
         // pass referrer to login so it can redirect back if needed (optional)
-        window.location.href = 'login.html?next=' + encodeURIComponent(current);
+        window.location.href = 'index.html?next=' + encodeURIComponent(current);
       } else {
         // optional: expose current user to page
         window.__LOGGED_IN_USER = user;
       }
     } catch(e){
       // best-effort fallback: redirect
-      window.location.href = 'login.html';
+      window.location.href = 'index.html';
     }
   })();
 </script>
@@ -1476,7 +1476,7 @@
             }
           } catch(e){}
           // redirect to login
-          window.location.href = 'login.html';
+          window.location.href = 'index.html';
         });
       }
     })();
