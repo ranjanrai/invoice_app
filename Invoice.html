@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <title>Invoice Generator — Mobile Friendly (Updated)</title>
-  <!-- AUTH CHECK: place this near top of invoice.html (right after <body>) -->
+  <!-- AUTH CHECK: place this near top of Invoice.html (right after <body>) -->
 <script>
   (function(){
     // require login: prefer localStorage (remember) else sessionStorage
@@ -12,7 +12,7 @@
       const user = localStorage.getItem('loggedInUser') || sessionStorage.getItem('loggedInUser');
       if(!user){
         // not logged in -> redirect to login
-        const current = window.location.pathname.split('/').pop() || 'invoice.html';
+        const current = window.location.pathname.split('/').pop() || 'Invoice.html';
         // pass referrer to login so it can redirect back if needed (optional)
         window.location.href = 'login.html?next=' + encodeURIComponent(current);
       } else {
