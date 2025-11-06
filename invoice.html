@@ -662,6 +662,21 @@
     const logoUrlEl = document.getElementById('logoUrl');
     const logoFileEl = document.getElementById('logoFile');
     const showLogoEl = document.getElementById('showLogo');
+    // ✅ Remember uploaded logo as Base64
+logoFileEl.addEventListener('change', function(){
+  const file = logoFileEl.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    settings.logoData = e.target.result; // store base64
+    logoUrlEl.value = ""; // clear URL if file used
+    printLogo.src = settings.logoData;
+    showLogoEl.checked = true;
+    applyLogoVisibility();
+  };
+  reader.readAsDataURL(file);
+});
+
     const logoWidthEl = document.getElementById('logoWidth');
     const bankAccInput = document.getElementById('bankAccInput');
     const bankIfscInput = document.getElementById('bankIfscInput');
@@ -1111,7 +1126,12 @@
       settings.splDiscountValue = Number(discountValueEl.value||0);
       settings.pfCharges = Number(pfValueEl.value||0);
       settings.gstPercent = Number(gstPercentEl.value||5);
-      settings.logoUrl = logoUrlEl.value || '';
+      settings.logoUrl = logoUrlEl.value.trim();
+
+// ✅ Prefer saved image if uploaded
+if(settings.logoData){
+  delete settings.logoUrl;
+}
       settings.showLogo = !!showLogoEl.checked;
       settings.logoWidth = Number(logoWidthEl.value) || 120;
 
