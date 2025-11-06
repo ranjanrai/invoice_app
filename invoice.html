@@ -125,6 +125,10 @@
 
 /* small visual indicator in preview when high-quality export is enabled */
 .hq-indicator { font-size:12px; color:#0b5ed7; margin-left:8px; font-weight:700; }
+#addLineBtn {
+  display: none !important;
+}
+
   </style>
 
 </head>
@@ -171,9 +175,9 @@
         <textarea id="customerName" placeholder="Customer name / address (multiline supported)" rows="3" style="margin-top:8px;padding:10px;border:1px solid #ddd;border-radius:6px;width:100%;font-family:inherit;font-size:14px;line-height:1.2;resize:vertical"></textarea>
       </div>
       <div>
-        <label>User Name</label>
-        <input id="userName" placeholder="Enter user / prepared by" />
-      </div>
+  <label style="font-weight:700; font-size:14px; margin-bottom:6px; display:block">Patient Name</label>
+  <textarea id="patientName" placeholder="Enter Patient Name" rows="2" style="padding:10px;border:1px solid #ddd;border-radius:6px;width:100%;font-family:inherit;font-size:14px;line-height:1.2;resize:none;overflow:hidden"></textarea>
+</div>
     </div>
 
     <div class="table-wrap">
@@ -472,8 +476,9 @@
                 </div>
 
                 <div class="inv-col">
-                  <div style="color:var(--muted);font-size:12px">PREPARED BY</div>
-                  <div id="printUserName" style="font-weight:700"></div>
+                  <div style="color:var(--muted);font-size:12px">PATIENT NAME</div>
+<div id="printPatientName" class="bill-to" style="font-weight:700;white-space:pre-line"></div>
+
                 </div>
               </div>
 
@@ -644,7 +649,8 @@
     const exportDataBtn = document.getElementById('exportDataBtn');
     const importDataBtn = document.getElementById('importDataBtn');
     const importFileInput = document.getElementById('importFile');
-    const userNameEl = document.getElementById('userName');
+    const patientNameEl = document.getElementById('patientName');
+
 
     // summary fields
     const subTotalEl = document.getElementById('subTotal');
@@ -716,7 +722,7 @@
     const printCompanyEmail = document.getElementById('printCompanyEmail');
     const printBankAcc = document.getElementById('printBankAcc');
     const printBankIfsc = document.getElementById('printBankIfsc');
-    const printUserName = document.getElementById('printUserName');
+    
     const hqCheckbox = document.getElementById('highQualityPdf');
     const toggleHighQualityBtn = document.getElementById('toggleHighQualityBtn');
     const hqIndicatorPreview = document.getElementById('hqIndicatorPreview');
@@ -1264,7 +1270,7 @@
     saveBtn.addEventListener('click', async ()=>{
       const invoiceNumberToSave = await generateInvoiceNumber();
       const t = calcTotals();
-      const invoice = { invoiceNumber: invoiceNumberToSave, issueDate: issueDateEl.value, customer: customerEl.value, userName: userNameEl.value, lines: JSON.parse(JSON.stringify(lines)), ...t, createdAt: new Date().toISOString() };
+      const invoice = { invoiceNumber: invoiceNumberToSave, issueDate: issueDateEl.value, customer: customerEl.value, patientName: patientNameEl.value,lines: JSON.parse(JSON.stringify(lines)), ...t, createdAt: new Date().toISOString() };
       await db.invoices.add(invoice);
       invoiceNoEl.value = await peekNextInvoiceNumber();
       alert('Invoice saved offline as ' + invoiceNumberToSave);
@@ -1278,7 +1284,8 @@
       printDate.textContent = issueDateEl.value || new Date().toISOString().slice(0,10);
       // preserve multiline customer details in preview
       printBillTo.textContent = (customerEl.value || '');
-      printUserName.textContent = userNameEl.value || '';
+      printPatientName.textContent = (patientNameEl.value || '');
+
 
       // pick the best logo data
       if(settings.logoData) printLogo.src = settings.logoData;
