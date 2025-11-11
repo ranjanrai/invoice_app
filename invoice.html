@@ -955,17 +955,30 @@ const customersCsvFile = document.getElementById('customersCsvFile');
     let products = [];
     let lines = [];
     let customers = [];
-    let settings = {
-      splDiscountType:'percent', splDiscountValue:0, pfCharges:0, gstPercent:5,
-        logoUrl:'',                 // no external URL to avoid CORS
-  logoData: DEFAULT_LOGO_DATAURL,  // ✅ embedded logo 
-      bankAcc:'XXXXXX', bankIfsc:'IDIB0000018', bankName:'INDIAN BANK',
-      bankBranch:'GUWAHATI', companyName:'M/s BONE CARE SURGICALS',
-      companyReg:'18CXXPS2640JIZN', companyAddress:'Rupnagar, Kamrup Metropolitan, Assam, 781032',
-      companyEmail:'bonecares@gmail.com', invoicePrefix:`INV-${new Date().getFullYear()}-`, invoiceSeq:1,
-      pdfQuality:0.8, compressJpeg:true, highQualityPdf:false,
-      fastExport:false, exportTextLikePreview:false
-    };
+let settings = {
+  splDiscountType:'percent', splDiscountValue:0, pfCharges:0, gstPercent:5,
+
+  // ✅ Logo defaults
+  logoUrl:'',                 // no external URL to avoid CORS
+  logoData: DEFAULT_LOGO_DATAURL,  // embedded default logo
+  showLogo: true,             // ✅ ENABLE LOGO BY DEFAULT
+  logoWidth: 120,
+
+  bankAcc:'XXXXXX', bankIfsc:'IDIB0000018', bankName:'INDIAN BANK',
+  bankBranch:'GUWAHATI', companyName:'M/s BONE CARE SURGICALS',
+  companyReg:'18CXXPS2640JIZN',
+  companyAddress:'Rupnagar, Kamrup Metropolitan, Assam, 781032',
+  companyEmail:'bonecares@gmail.com', 
+  invoicePrefix:`INV-${new Date().getFullYear()}-`, 
+  invoiceSeq:1,
+
+  pdfQuality:0.8, 
+  compressJpeg:true, 
+  highQualityPdf:false,
+  fastExport:false, 
+  exportTextLikePreview:false
+};
+
 
     const sampleProducts = [
       { id:cryptoRandomId(), name:'DHL MEDIAL LOCKING PLATE 3.5MM (RIGHT)', size:'5 Hole', rate:4400, description:'DHL MEDIAL LOCKING PLATE 3.5MM (RIGHT)' },
@@ -1064,7 +1077,8 @@ if (!settings.logoData && !settings.logoUrl) {
       pfValueEl.value = settings.pfCharges;
       gstPercentEl.value = settings.gstPercent;
       logoUrlEl.value = settings.logoUrl || '';
-      showLogoEl.checked = !!settings.showLogo;
+     showLogoEl.checked = (settings.showLogo !== false);
+
       logoWidthEl.value = settings.logoWidth || 120;
 
       companyNameInput.value = settings.companyName || '';
@@ -2369,3 +2383,4 @@ if (importCustomersCsvBtn && customersCsvFile) {
   </script>
 </body>
 </html>
+
