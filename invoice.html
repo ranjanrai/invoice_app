@@ -461,6 +461,41 @@ button.danger {
   font-weight: 400;
 }
 
+    /* ✅ Thin black borders only for Product Description table */
+.lines-table-print,
+.lines-table-print th,
+.lines-table-print td {
+  border: 0.4px solid #000;    /* thin black border */
+  border-collapse: collapse;
+}
+
+.lines-table-print th,
+.lines-table-print td {
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 13px;
+}
+
+/* ✅ White header cells */
+.lines-table-print th {
+  background: #fff !important;   /* pure white background */
+  color: #000;                   /* black text */
+  font-weight: 700;
+}
+
+/* ✅ Keep same style in PDF/print mode */
+@media print {
+  .lines-table-print,
+  .lines-table-print th,
+  .lines-table-print td {
+    border: 0.4px solid #000 !important;
+  }
+  .lines-table-print th {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
+
 
   </style>
 </head>
@@ -2663,4 +2698,5 @@ if (importCustomersCsvBtn && customersCsvFile) {
   </script>
 </body>
 </html>
+
 
