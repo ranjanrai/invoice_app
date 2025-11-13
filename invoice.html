@@ -934,6 +934,7 @@ button.danger {
       style="
         position: sticky;
         top: 0;
+      left: 0;      /* ← FIX */
         background: #fff;
         z-index: 10;
         padding: 10px 0;
@@ -958,7 +959,7 @@ button.danger {
     <!-- 📄 Scrollable Table -->
     <div style="max-height:70vh;overflow-y:auto;margin-top:6px;">
       <table class="products-table" style="width:100%;border-collapse:collapse;">
-        <thead style="background:#f9fafb;position:sticky;top:56px;z-index:5;">
+        <thead style="background:#f9fafb;">
           <tr>
             <th>#</th>
             <th>Invoice No</th>
@@ -2698,5 +2699,6 @@ if (importCustomersCsvBtn && customersCsvFile) {
   </script>
 </body>
 </html>
+
 
 
