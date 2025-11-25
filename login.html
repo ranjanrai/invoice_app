@@ -1,0 +1,380 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Login — Invoice App</title>
+  <style>
+    :root{--bg:#f3f4f6;--accent:#0b5ed7;--muted:#6b7280}
+    body{margin:0;background:var(--bg);font-family:Arial,Helvetica,sans-serif;color:#111;display:flex;align-items:center;justify-content:center;height:100vh;padding:16px}
+    .card{width:100%;max-width:420px;background:#fff;padding:20px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+    h2{margin:0 0 12px;font-size:20px}
+    label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+    input{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin-top:6px;font-size:14px;box-sizing:border-box}
+    .actions{display:flex;gap:8px;margin-top:16px}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:8px;cursor:pointer;font-size:14px}
+    .secondary{background:#fff;color:var(--accent);border:1px solid #dde6f8}
+    .small{font-size:13px;padding:8px 10px}
+    .note{font-size:12px;color:#666;margin-top:12px}
+    .error{color:#b00020;font-size:13px;margin-top:8px}
+    .muted-btn {background:#fff;color:#333;border:1px solid #e5e7eb}
+  </style>
+</head>
+<body>
+  <div class="card" role="main" aria-labelledby="loginTitle">
+    <h2 id="loginTitle">Sign in to Invoice App</h2>
+
+    <label for="username">Username</label>
+    <input id="username" autocomplete="username" placeholder="username" autofocus />
+
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="password" />
+<label for="role">Login As</label>
+<select id="role" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin-top:6px;font-size:14px;">
+  <option value="retailer">Retailer</option>
+  <option value="distributor">Distributor</option>
+</select>
+
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+      <label style="font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px">
+        <input id="remember" type="checkbox" /> Remember
+      </label>
+      <div>
+        <button id="openDbBtn" class="secondary small">Open DB File</button>
+        <button id="forgot" class="secondary small">Reset to default</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="loginBtn">Sign In</button>
+      <button id="guestBtn" class="secondary">Continue as Guest</button>
+    </div>
+
+    <div class="note">
+      Default (first-time) credentials: <strong>admin / admin123</strong>. You can change these later in Settings.
+    </div>
+
+    <div id="error" class="error" aria-live="polite" hidden></div>
+  </div>
+
+  <!-- hidden fallback file input -->
+  <input id="loginFileInput" type="file" accept="application/json" style="display:none" />
+
+  <!-- Dexie (same DB name used by invoice app) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dexie/3.2.4/dexie.min.js"></script>
+  <script>
+    (async function(){
+      // ---------- Dexie setup (clean versioning + upgrades) ----------
+      const db = new Dexie('InvoiceDB');
+
+      // v1: core tables
+      db.version(1).stores({
+        products: 'id,name,size,rate,description',
+        settings: 'key',
+        invoices: '++id,invoiceNumber,createdAt'
+      });
+
+      // v2: add customers
+      db.version(2).stores({
+        products: 'id,name,size,rate,description',
+        settings: 'key',
+        invoices: '++id,invoiceNumber,createdAt',
+        customers: 'id,name'
+      });
+
+      // v3: add users + migrate legacy settings.auth -> users
+      db.version(3).stores({
+        products: 'id,name,size,rate,description',
+        settings: 'key',
+        invoices: '++id,invoiceNumber,createdAt',
+        customers: 'id,name',
+        users: '++id,username'
+      }).upgrade(async tx => {
+        const settingsTable = tx.table('settings');
+        const usersTable = tx.table('users');
+        const authRec = await settingsTable.get('auth').catch(()=>null);
+        const count = await usersTable.count().catch(()=>0);
+
+        if(authRec && authRec.value && !count){
+          const v = authRec.value;
+          const username = v.username || 'admin';
+          let passwordHash = v.passwordHash;
+          if(!passwordHash && v.password){
+            const enc = new TextEncoder();
+            const hashBuffer = await crypto.subtle.digest('SHA-256', enc.encode(String(v.password)));
+            passwordHash = Array.from(new Uint8Array(hashBuffer)).map(b=>b.toString(16).padStart(2,'0')).join('');
+          }
+          if(passwordHash){
+            await usersTable.add({ username, passwordHash, createdAt: new Date().toISOString() }).catch(()=>{});
+          }
+        }
+      });
+
+      // open DB explicitly (avoids implicit open races)
+      await db.open();
+
+      // ---------- utilities ----------
+      async function sha256hex(text){
+        const enc = new TextEncoder();
+        const data = enc.encode(text);
+        const hash = await crypto.subtle.digest('SHA-256', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,'0')).join('');
+      }
+      function showError(msg){ errorEl.hidden = false; errorEl.textContent = msg; }
+      function clearError(){ errorEl.hidden = true; errorEl.textContent = ''; }
+
+      // ---------- ensure defaults if needed ----------
+      async function ensureAuthSeed(){
+        const usersExists = !!db.users;
+        if(usersExists){
+          const cnt = await db.users.count().catch(()=>0);
+          if(!cnt){
+            const hashed = await sha256hex('admin123');
+            await db.users.add({ username:'admin', passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+          }
+        } else {
+          const auth = await db.settings.get('auth').catch(()=>null);
+          if(!auth || !auth.value){
+            await db.settings.put({ key:'auth', value: { username:'admin', password:'admin123' } });
+          }
+        }
+      }
+      await ensureAuthSeed();
+
+      // ---------- elements ----------
+      const usernameEl = document.getElementById('username');
+      const passwordEl = document.getElementById('password');
+      const rememberEl = document.getElementById('remember');
+      const errorEl = document.getElementById('error');
+      const loginBtn = document.getElementById('loginBtn');
+      const guestBtn = document.getElementById('guestBtn');
+      const forgotBtn = document.getElementById('forgot');
+      const openDbBtn = document.getElementById('openDbBtn');
+      const loginFileInput = document.getElementById('loginFileInput');
+
+      // existing session? jump to app
+      try{
+        const sess = localStorage.getItem('loggedInUser') || sessionStorage.getItem('loggedInUser');
+        if(sess){ window.location.href = 'invoice.html'; return; }
+      }catch{}
+
+      // ---------- verification helpers ----------
+      async function verifyAgainstUsers(username, passwordPlain){
+        if(!db.users) return { ok:false };
+        const rec = await db.users.where('username').equals(username).first();
+        if(!rec) return { ok:false };
+        if(rec.passwordHash){
+          const providedHash = await sha256hex(passwordPlain);
+          return { ok: providedHash === rec.passwordHash, user: rec.username };
+        }
+        if(rec.password){
+          if(passwordPlain === rec.password){
+            const newHash = await sha256hex(passwordPlain);
+            await db.users.update(rec.id, { passwordHash: newHash }).catch(()=>{});
+            return { ok:true, user: rec.username };
+          }
+        }
+        return { ok:false };
+      }
+
+      async function verifyAgainstLegacy(username, passwordPlain){
+        const authRec = await db.settings.get('auth').catch(()=>null);
+        const stored = (authRec && authRec.value) ? authRec.value : { username:'admin', password:'admin123' };
+        const providedHash = await sha256hex(passwordPlain);
+        const storedHash = stored.passwordHash || (stored.password ? await sha256hex(stored.password) : null);
+
+        if(username === stored.username && storedHash && providedHash === storedHash){
+          return { ok:true, username: stored.username, legacy:true };
+        }
+        if(username === stored.username && stored.password && passwordPlain === stored.password){
+          const newHash = await sha256hex(stored.password);
+          await db.settings.put({ key:'auth', value: { username: stored.username, passwordHash: newHash } });
+          return { ok:true, username: stored.username, legacy:true };
+        }
+        return { ok:false };
+      }
+
+      // --- REPLACE existing setSession(...) and login click handler with this ---
+
+/**
+ * Persist both username and role.
+ * - Stores username in loggedInUser (same as before) so other pages don't break.
+ * - Stores role separately in loggedInRole.
+ * - Also writes db.settings.session.value = { user, role, createdAt } (keeps existing DB record)
+ */
+// ---------- Replace existing setSession and login handler with this ----------
+function setSession(user, role){
+  try{
+    if(document.getElementById('remember') && document.getElementById('remember').checked){
+      localStorage.setItem('loggedInUser', user);
+      localStorage.setItem('loggedInRole', role);
+    } else {
+      sessionStorage.setItem('loggedInUser', user);
+      sessionStorage.setItem('loggedInRole', role);
+    }
+  }catch(e){
+    console.warn('setSession storage error', e);
+  }
+
+  // Keep DB session record if your app uses db.settings
+  if(window.db && db.settings && db.settings.put){
+    db.settings.put({
+      key: 'session',
+      value: { user: user, role: role, createdAt: new Date().toISOString() }
+    }).catch(()=>{});
+  }
+  // for debugging
+  console.log('setSession saved:', { user, role,
+    localStoredRole: localStorage.getItem('loggedInRole'),
+    sessionStoredRole: sessionStorage.getItem('loggedInRole') });
+}
+
+document.getElementById('loginBtn').addEventListener('click', async function(e){
+  e.preventDefault();
+  const usernameEl = document.getElementById('username');
+  const passwordEl = document.getElementById('password');
+  const roleEl = document.getElementById('role');
+  const username = usernameEl ? usernameEl.value.trim() : '';
+  const password = passwordEl ? passwordEl.value : '';
+  const selectedRole = roleEl ? roleEl.value : 'retailer'; // default
+
+  console.log('Login attempt', { username, selectedRole });
+
+  if(!username || !password){ alert('Enter username and password'); return; }
+
+  try{
+    // keep your existing verify logic — call it here
+    const verified = await verifyAgainstUsers(username, password).catch(()=>({ok:false}));
+    if(verified && verified.ok){
+      await setSession(username, selectedRole);
+    } else {
+      const legacy = await verifyAgainstLegacy(username, password).catch(()=>({ok:false}));
+      if(legacy && legacy.ok){
+        await setSession(username, selectedRole);
+      } else {
+        alert('Invalid username or password');
+        return;
+      }
+    }
+
+    // Force reload and redirect based on chosen role
+    if(selectedRole === 'distributor'){
+      window.location.href = 'distributor.html';
+    } else {
+      window.location.href = 'invoice.html';
+    }
+  }catch(err){
+    console.error('login error', err);
+    alert('Login failed, see console');
+  }
+});
+
+
+      // Enter to submit
+      [usernameEl,passwordEl].forEach(el=> el.addEventListener('keydown', e=>{ if(e.key==='Enter') loginBtn.click(); }));
+
+      // ---------- guest ----------
+      guestBtn.addEventListener('click', async ()=>{
+        const guest = 'guest';
+        try{ sessionStorage.setItem('loggedInUser', guest); }catch{}
+        await db.settings.put({ key:'session', value: { user: guest, createdAt: new Date().toISOString() } });
+        window.location.href = 'invoice.html';
+      });
+
+      // ---------- reset to default ----------
+      forgotBtn.addEventListener('click', async ()=>{
+        if(!confirm('Reset credentials to default admin/admin123?')) return;
+        try{
+          await db.settings.put({ key:'auth', value: { username:'admin', password:'admin123' } });
+          if(db.users){
+            await db.users.clear();
+            const hashed = await sha256hex('admin123');
+            await db.users.add({ username:'admin', passwordHash: hashed, createdAt: new Date().toISOString() }).catch(()=>{});
+          }
+          clearError();
+          showError('Credentials reset to admin / admin123');
+        }catch(e){
+          console.error('reset failed', e);
+          showError('Reset failed.');
+        }
+      });
+
+      // ---------- import users/auth from JSON ----------
+      async function handleImportedDbObject(obj){
+        if(!obj || typeof obj !== 'object'){ showError('Invalid file format.'); return; }
+
+        if(Array.isArray(obj.users) && db.users){
+          for(const u of obj.users){
+            if(!u.username) continue;
+            const existing = await db.users.where('username').equals(u.username).first().catch(()=>null);
+            let passwordHash = u.passwordHash;
+            if(!passwordHash && u.password){
+              passwordHash = await sha256hex(String(u.password));
+            }
+            if(existing){
+              if(passwordHash) await db.users.update(existing.id, { passwordHash }).catch(()=>{});
+            } else {
+              await db.users.add({ username: u.username, passwordHash, createdAt: u.createdAt || new Date().toISOString() }).catch(()=>{});
+            }
+          }
+        }
+
+        if(Array.isArray(obj.settings)){
+          const authEntry = obj.settings.find(s => s && s.key === 'auth');
+          if(authEntry && authEntry.value){
+            await db.settings.put({ key:'auth', value: authEntry.value });
+          }
+        } else if(obj.settings && typeof obj.settings === 'object' && obj.settings.auth){
+          await db.settings.put({ key:'auth', value: obj.settings.auth });
+        } else if(obj.auth && typeof obj.auth === 'object'){
+          await db.settings.put({ key:'auth', value: obj.auth });
+        }
+
+        alert('Imported DB — auth/users loaded. You can now log in with those credentials.');
+      }
+
+      const openDbBtnClick = async ()=>{
+        clearError();
+        if(window.showOpenFilePicker){
+          try{
+            const [handle] = await window.showOpenFilePicker({
+              multiple:false,
+              types:[{ description:'JSON', accept:{ 'application/json':['.json'] } }],
+              excludeAcceptAllOption:false
+            });
+            const file = await handle.getFile();
+            const text = await file.text();
+            await handleImportedDbObject(JSON.parse(text));
+            return;
+          }catch(err){
+            if(err?.name === 'AbortError') return;
+            console.warn('showOpenFilePicker failed; fallback to file input', err);
+          }
+        }
+        loginFileInput.click();
+      };
+
+      const loginFileChanged = async (e)=>{
+        const f = e.target.files?.[0];
+        if(!f) return;
+        try{
+          const text = await f.text();
+          await handleImportedDbObject(JSON.parse(text));
+        }catch(err){
+          console.error('File import error', err);
+          showError('Failed to parse file.');
+        }finally{
+          loginFileInput.value = '';
+        }
+      };
+
+      document.getElementById('openDbBtn').addEventListener('click', openDbBtnClick);
+      document.getElementById('loginFileInput').addEventListener('change', loginFileChanged);
+    })();
+
+
+
+  </script>
+</body>
+</html>
