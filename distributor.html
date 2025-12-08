@@ -2298,7 +2298,18 @@ let settings = {
       })[c]);
     }
     function autoGrowTextarea(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }
+    
+// SHA-256 helper (same as login.html)
+async function sha256hex(text){
+  const enc  = new TextEncoder();
+  const data = enc.encode(String(text));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash))
+              .map(b => b.toString(16).padStart(2, '0'))
+              .join('');
+}
 
+    
     // =============== Users helpers ===============
     async function addUser(username, passwordPlain){
       if(!db.users) throw new Error('Users store not available');
@@ -2327,6 +2338,52 @@ let settings = {
       body.querySelectorAll('.delUser').forEach(btn=> btn.addEventListener('click', async (e)=>{ if(!confirm('Delete this user?')) return; const id = Number(e.target.dataset.id); await deleteUser(id); await renderUsersTable(); await tryAutoSaveToHandle(); }));
       body.querySelectorAll('.editUser').forEach(btn=> btn.addEventListener('click', async (e)=>{ const id = Number(e.target.dataset.id); const rec = await db.users.get(id); if(!rec) return; authUsernameEl.value = rec.username || ''; authPasswordEl.value = ''; saveAuthBtn.textContent = 'Update User'; saveAuthBtn.dataset.edit = id; }));
     }
+    // =======================
+// USER ADD / UPDATE HANDLER
+// =======================
+saveAuthBtn.addEventListener("click", async () => {
+  const username = authUsernameEl.value.trim();
+  const password = authPasswordEl.value.trim();
+
+  if (!username || !password) {
+    alert("Username and password are required.");
+    return;
+  }
+
+  try {
+    // If editing an existing user
+    if (saveAuthBtn.dataset.edit) {
+      const id = Number(saveAuthBtn.dataset.edit);
+      await updateUser(id, username, password);
+      saveAuthBtn.textContent = "Add User";
+      delete saveAuthBtn.dataset.edit;
+    } 
+    else {
+      // Adding new user
+      await addUser(username, password);
+    }
+
+    authUsernameEl.value = "";
+    authPasswordEl.value = "";
+
+    await renderUsersTable();
+    await saveDbToFirebase();   // 👈 important for Firebase-only mode
+    alert("User saved successfully!");
+    
+  } catch (e) {
+    alert("Error: " + e.message);
+  }
+});
+
+// RESET DEFAULT USER
+resetAuthBtn.addEventListener("click", async () => {
+  await db.users.clear();
+  await addUser("admin", "admin123");
+  await renderUsersTable();
+  await saveDbToFirebase();
+  alert("Login reset to default: admin / admin123");
+});
+
     async function seedDefaultUserIfNeeded(){
       try{
         if(!db.users) return;
@@ -4502,6 +4559,7 @@ function pdfProgressHide() {
 
 </body>
 </html>
+
 
 
 
