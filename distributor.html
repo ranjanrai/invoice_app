@@ -1572,8 +1572,9 @@ function settingsFromArray(arr) {
 }
 
 // === Core Firebase read/write ===
+// === Core Firebase read/write ===
 async function loadDbFromFirebase() {
-  const snap = await firebaseDB.ref("invoice_app_data").once("value");
+  const snap = await firebaseDB.ref("distributor_app_data").once("value");
   const data = snap.exists() ? snap.val() : {};
 
   DB_STATE.products  = data.products  || [];
@@ -1582,7 +1583,7 @@ async function loadDbFromFirebase() {
   DB_STATE.users     = data.users     || [];
   DB_STATE.settings  = data.settings  || {};
 
-  console.log("[Firebase] Loaded data", DB_STATE);
+  console.log("[Firebase] Loaded data (Distributor)", DB_STATE);
 }
 
 async function saveDbToFirebase() {
@@ -1596,9 +1597,10 @@ async function saveDbToFirebase() {
     updatedBy: window.__LOGGED_IN_USER || "unknown"
   };
 
-  await firebaseDB.ref("invoice_app_data").set(payload);
-  console.log("[Firebase] Saved data", payload);
+  await firebaseDB.ref("distributor_app_data").set(payload);
+  console.log("[Firebase] Saved data (Distributor)", payload);
 }
+
 
 // ☁ SAVE TO CLOUD (called by Save Cloud button)
 async function saveAllToFirebase() {
@@ -4500,5 +4502,6 @@ function pdfProgressHide() {
 
 </body>
 </html>
+
 
 
